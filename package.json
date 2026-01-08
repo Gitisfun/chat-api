@@ -1,0 +1,32 @@
+{
+  "name": "chat-api",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/Gitisfun/chat-api#readme",
+  "bugs": {
+    "url": "https://github.com/Gitisfun/chat-api/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gitisfun/chat-api.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.90.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "mongoose": "^9.1.2"
+  }
+}
