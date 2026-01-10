@@ -16,7 +16,7 @@ import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
 const server = http.createServer(app);
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3003;
 
 // Initialize Socket.IO
 initializeSocket(server);
@@ -24,6 +24,14 @@ initializeSocket(server);
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// API key validation for protected routes
+app.use(validateApiKey);
 
 // Swagger UI - accessible without API key
 app.use("/api/swagger", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
@@ -37,16 +45,9 @@ app.get("/api-docs.json", (req, res) => {
   res.send(swaggerSpec);
 });
 
-// API key validation for protected routes
-app.use(validateApiKey);
-
 // API routes with authentication
 app.use('/api/rooms',  roomsRouter);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 app.use((req, res, next) => next(ApiError.notFound("Route not found")));
   
