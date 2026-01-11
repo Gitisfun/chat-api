@@ -45,8 +45,8 @@ export default function chatHandler(io, socket) {
       connectedUsers.set(socket.id, { username, senderId, currentRoom: roomId });
 
       // Add user to room participants if not already
-      if (!room.participants.includes(username)) {
-        room.participants.push(username);
+      if (!room.participants.includes(senderId)) {
+        room.participants.push(senderId);
         await room.save();
       }
 
@@ -230,6 +230,7 @@ export default function chatHandler(io, socket) {
   socket.on("room:create", async ({ name, description, isPrivate }) => {
     try {
       const username = socket.username || "Anonymous";
+      const senderId = socket.senderId || socket.id;
 
       const existingRoom = await Room.findOne({ name });
       if (existingRoom) {
@@ -239,9 +240,9 @@ export default function chatHandler(io, socket) {
       const room = await Room.create({
         name,
         description: description || "",
-        createdBy: username,
+        createdBy: senderId,
         isPrivate: isPrivate || false,
-        participants: [username],
+        participants: [senderId],
       });
 
       socket.emit("room:created", {

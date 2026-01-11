@@ -29,15 +29,15 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
-
-// API key validation for protected routes
-app.use(validateApiKey);
-
 // Swagger UI - accessible without API key
 app.use("/api/swagger", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
   customSiteTitle: "Chat API Documentation",
 }));
+
+// API key validation for protected routes
+app.use(validateApiKey);
+
 
 // Serve swagger spec as JSON
 app.get("/api-docs.json", (req, res) => {

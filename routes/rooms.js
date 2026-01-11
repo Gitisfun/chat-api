@@ -86,6 +86,11 @@ router.get("/", async (req, res, next) => {
  *                       unreadCount:
  *                         type: integer
  *                         example: 5
+ *                       participants:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         example: ["user_123", "user_456"]
  *       500:
  *         description: Internal server error
  */
@@ -124,12 +129,19 @@ router.get("/unread/:userId", async (req, res, next) => {
         $unwind: "$room"
       },
       {
+        // Only include rooms where the user is a participant
+        $match: {
+          "room.participants": userId
+        }
+      },
+      {
         // Project the final shape
         $project: {
           _id: 0,
           roomId: "$_id",
           roomName: "$room.name",
-          unreadCount: 1
+          unreadCount: 1,
+          participants: "$room.participants"
         }
       },
       {
@@ -142,6 +154,112 @@ router.get("/unread/:userId", async (req, res, next) => {
   } catch (error) {
     console.error("Error fetching unread messages:", error);
     next(ApiError.internal("Failed to fetch unread messages"));
+  }
+});
+
+/**
+ * @swagger
+ * /rooms/admin/unread/{userId}:
+ *   get:
+ *     summary: Get all rooms with unread messages for admin
+ *     description: Returns a list of all rooms that have unread messages not sent by the user. Unlike the regular unread endpoint, the user does not need to be a participant of the room.
+ *     tags: [Rooms]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Admin user's odooId/senderId
+ *         example: admin_123
+ *     responses:
+ *       200:
+ *         description: Rooms with unread messages retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       roomId:
+ *                         type: string
+ *                         example: "507f1f77bcf86cd799439011"
+ *                       roomName:
+ *                         type: string
+ *                         example: "general"
+ *                       unreadCount:
+ *                         type: integer
+ *                         example: 5
+ *                       participants:
+ *                         type: array
+ *                         items:
+ *                           type: string
+ *                         example: ["user_123", "user_456"]
+ *       500:
+ *         description: Internal server error
+ */
+router.get("/admin/unread/:userId", async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    // Find all messages not sent by the user and not read by the user
+    // Admin does not need to be a participant of the room
+    const unreadMessages = await Message.aggregate([
+      {
+        // Exclude messages sent by the user
+        $match: {
+          senderId: { $ne: userId },
+          // Not read by this user
+          "readBy.odooId": { $ne: userId }
+        }
+      },
+      {
+        // Group by roomId and count unread messages
+        $group: {
+          _id: "$roomId",
+          unreadCount: { $sum: 1 }
+        }
+      },
+      {
+        // Lookup room details
+        $lookup: {
+          from: "rooms",
+          localField: "_id",
+          foreignField: "_id",
+          as: "room"
+        }
+      },
+      {
+        // Unwind the room array
+        $unwind: "$room"
+      },
+      {
+        // Project the final shape
+        $project: {
+          _id: 0,
+          roomId: "$_id",
+          roomName: "$room.name",
+          unreadCount: 1,
+          participants: "$room.participants"
+        }
+      },
+      {
+        // Sort by unread count descending
+        $sort: { unreadCount: -1 }
+      }
+    ]);
+
+    res.json({ success: true, data: unreadMessages });
+  } catch (error) {
+    console.error("Error fetching admin unread messages:", error);
+    next(ApiError.internal("Failed to fetch admin unread messages"));
   }
 });
 
