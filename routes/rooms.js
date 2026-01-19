@@ -10,8 +10,16 @@ const router = express.Router();
  * /rooms:
  *   get:
  *     summary: Get all public rooms
- *     description: Retrieves a list of all public chat rooms
+ *     description: Retrieves a list of all public chat rooms for an application
  *     tags: [Rooms]
+ *     parameters:
+ *       - in: query
+ *         name: applicationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application identifier
+ *         example: app_123
  *     responses:
  *       200:
  *         description: List of rooms retrieved successfully
@@ -27,6 +35,8 @@ const router = express.Router();
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Room'
+ *       400:
+ *         description: Bad request (missing applicationId)
  *       500:
  *         description: Internal server error
  *         content:
@@ -36,8 +46,14 @@ const router = express.Router();
  */
 router.get("/", async (req, res, next) => {
   try {
-    const rooms = await Room.find({ isPrivate: false })
-      .select("name description participants createdAt")
+    const { applicationId } = req.query;
+
+    if (!applicationId) {
+      return next(ApiError.badRequest("applicationId is required"));
+    }
+
+    const rooms = await Room.find({ isPrivate: false, applicationId })
+      .select("name description applicationId participants createdAt")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, data: rooms });
@@ -61,6 +77,13 @@ router.get("/", async (req, res, next) => {
  *           type: string
  *         description: User's odooId/senderId
  *         example: user_123
+ *       - in: query
+ *         name: applicationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application identifier
+ *         example: app_123
  *     responses:
  *       200:
  *         description: Rooms with unread messages retrieved successfully
@@ -91,18 +114,26 @@ router.get("/", async (req, res, next) => {
  *                         items:
  *                           type: string
  *                         example: ["user_123", "user_456"]
+ *       400:
+ *         description: Bad request (missing applicationId)
  *       500:
  *         description: Internal server error
  */
 router.get("/unread/:userId", async (req, res, next) => {
   try {
     const { userId } = req.params;
+    const { applicationId } = req.query;
+
+    if (!applicationId) {
+      return next(ApiError.badRequest("applicationId is required"));
+    }
 
     // Find all messages not sent by the user and not read by the user
     const unreadMessages = await Message.aggregate([
       {
-        // Exclude messages sent by the user
+        // Exclude messages sent by the user and filter by applicationId
         $match: {
+          applicationId,
           senderId: { $ne: userId },
           // Not read by this user
           "readBy.odooId": { $ne: userId }
@@ -172,6 +203,13 @@ router.get("/unread/:userId", async (req, res, next) => {
  *           type: string
  *         description: Admin user's odooId/senderId
  *         example: admin_123
+ *       - in: query
+ *         name: applicationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application identifier
+ *         example: app_123
  *     responses:
  *       200:
  *         description: Rooms with unread messages retrieved successfully
@@ -202,19 +240,27 @@ router.get("/unread/:userId", async (req, res, next) => {
  *                         items:
  *                           type: string
  *                         example: ["user_123", "user_456"]
+ *       400:
+ *         description: Bad request (missing applicationId)
  *       500:
  *         description: Internal server error
  */
 router.get("/admin/unread/:userId", async (req, res, next) => {
   try {
     const { userId } = req.params;
+    const { applicationId } = req.query;
+
+    if (!applicationId) {
+      return next(ApiError.badRequest("applicationId is required"));
+    }
 
     // Find all messages not sent by the user and not read by the user
     // Admin does not need to be a participant of the room
     const unreadMessages = await Message.aggregate([
       {
-        // Exclude messages sent by the user
+        // Exclude messages sent by the user and filter by applicationId
         $match: {
+          applicationId,
           senderId: { $ne: userId },
           // Not read by this user
           "readBy.odooId": { $ne: userId }
@@ -279,6 +325,13 @@ router.get("/admin/unread/:userId", async (req, res, next) => {
  *         description: Room name
  *         example: general
  *       - in: query
+ *         name: applicationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Application identifier
+ *         example: app_123
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -304,6 +357,8 @@ router.get("/admin/unread/:userId", async (req, res, next) => {
  *                           type: array
  *                           items:
  *                             $ref: '#/components/schemas/Message'
+ *       400:
+ *         description: Bad request (missing applicationId)
  *       404:
  *         description: Room not found
  *         content:
@@ -315,12 +370,16 @@ router.get("/admin/unread/:userId", async (req, res, next) => {
  */
 router.get("/name/:name", async (req, res, next) => {
   try {
-    const room = await Room.findOne({ name: req.params.name });
+    const { applicationId, limit = 50 } = req.query;
+
+    if (!applicationId) {
+      return next(ApiError.badRequest("applicationId is required"));
+    }
+
+    const room = await Room.findOne({ name: req.params.name, applicationId });
     if (!room) {
       return next(ApiError.notFound("Room not found"));
     }
-
-    const { limit = 50 } = req.query;
 
     // Fetch messages for this room
     const messages = await Message.find({ roomId: room._id })
@@ -494,20 +553,21 @@ router.get("/:id/messages", async (req, res, next) => {
  */
 router.post("/", async (req, res, next) => {
   try {
-    const { name, description, createdBy, isPrivate } = req.body;
+    const { name, description, createdBy, isPrivate, applicationId } = req.body;
 
-    if (!name || !createdBy) {
-      return next(ApiError.badRequest("Name and createdBy are required"));
+    if (!name || !createdBy || !applicationId) {
+      return next(ApiError.badRequest("Name, createdBy, and applicationId are required"));
     }
 
-    const existingRoom = await Room.findOne({ name });
+    const existingRoom = await Room.findOne({ name, applicationId });
     if (existingRoom) {
-      return next(ApiError.badRequest("Room name already exists"));
+      return next(ApiError.badRequest("Room name already exists for this application"));
     }
 
     const room = await Room.create({
       name,
       description: description || "",
+      applicationId,
       createdBy,
       isPrivate: isPrivate || false,
       participants: [createdBy],

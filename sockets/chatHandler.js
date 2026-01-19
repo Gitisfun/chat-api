@@ -6,15 +6,16 @@ export default function chatHandler(io, socket) {
   io.connectedUsers = connectedUsers;
 
   // Store user info on connection
-  socket.on("user:connect", async ({ username, senderId }) => {
+  socket.on("user:connect", async ({ username, senderId, applicationId }) => {
     socket.username = username;
     socket.senderId = senderId;
-    connectedUsers.set(socket.id, { username, senderId, currentRoom: null });
+    socket.applicationId = applicationId;
+    connectedUsers.set(socket.id, { username, senderId, applicationId, currentRoom: null });
     
-    console.log(`User ${username} (${senderId}) connected`);
+    console.log(`User ${username} (${senderId}) connected to application ${applicationId}`);
     
-    // Send list of available rooms
-    const rooms = await Room.find({ isPrivate: false }).select("name description participants createdAt");
+    // Send list of available rooms for this application
+    const rooms = await Room.find({ isPrivate: false, applicationId }).select("name description applicationId participants createdAt");
     socket.emit("rooms:list", rooms);
   });
 
@@ -40,9 +41,11 @@ export default function chatHandler(io, socket) {
         });
       }
 
+      const applicationId = userData?.applicationId;
+
       // Join new room
       socket.join(roomId);
-      connectedUsers.set(socket.id, { username, senderId, currentRoom: roomId });
+      connectedUsers.set(socket.id, { username, senderId, applicationId, currentRoom: roomId });
 
       // Add user to room participants if not already
       if (!room.participants.includes(senderId)) {
@@ -80,10 +83,10 @@ export default function chatHandler(io, socket) {
     const userData = connectedUsers.get(socket.id);
     if (!userData?.currentRoom) return;
 
-    const { username, senderId, currentRoom } = userData;
+    const { username, senderId, applicationId, currentRoom } = userData;
     
     socket.leave(currentRoom);
-    connectedUsers.set(socket.id, { username, senderId, currentRoom: null });
+    connectedUsers.set(socket.id, { username, senderId, applicationId, currentRoom: null });
 
     io.to(currentRoom).emit("user:left", {
       username,
@@ -102,10 +105,11 @@ export default function chatHandler(io, socket) {
         return socket.emit("error", { message: "You must join a room first" });
       }
 
-      const { username, senderId, currentRoom } = userData;
+      const { username, senderId, applicationId, currentRoom } = userData;
 
       const message = await Message.create({
         roomId: currentRoom,
+        applicationId,
         senderId,
         sender: username,
         content,
@@ -227,19 +231,25 @@ export default function chatHandler(io, socket) {
   });
 
   // Create a new room
-  socket.on("room:create", async ({ name, description, isPrivate }) => {
+  socket.on("room:create", async ({ name, description, isPrivate, applicationId }) => {
     try {
       const username = socket.username || "Anonymous";
       const senderId = socket.senderId || socket.id;
+      const appId = applicationId || socket.applicationId;
 
-      const existingRoom = await Room.findOne({ name });
+      if (!appId) {
+        return socket.emit("error", { message: "applicationId is required" });
+      }
+
+      const existingRoom = await Room.findOne({ name, applicationId: appId });
       if (existingRoom) {
-        return socket.emit("error", { message: "Room name already exists" });
+        return socket.emit("error", { message: "Room name already exists for this application" });
       }
 
       const room = await Room.create({
         name,
         description: description || "",
+        applicationId: appId,
         createdBy: senderId,
         isPrivate: isPrivate || false,
         participants: [senderId],

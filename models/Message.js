@@ -22,6 +22,11 @@ const messageSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    applicationId: {
+      type: String,
+      required: true,
+      index: true,
+    },
     senderId: {
       type: String,
       required: true,
@@ -52,6 +57,8 @@ const messageSchema = new mongoose.Schema(
 
 // Index for efficient message retrieval by room
 messageSchema.index({ roomId: 1, createdAt: -1 });
+// Index for efficient message retrieval by application
+messageSchema.index({ applicationId: 1, createdAt: -1 });
 
 const Message = mongoose.model("Message", messageSchema);
 
